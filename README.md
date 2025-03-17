@@ -1,620 +1,485 @@
-﻿**Zomato Clone App with DevSecOps CI/CD**
+# Zomato Clone App with DevSecOps CI/CD
 
-![](1.png)
+![Image](1.png)
 
-**Hello friends, we will be deploying a React Js Zomato-clone. We will be using Jenkins as a CICD tool and deploying our application on a Docker container. I Hope this detailed blog is useful.**
+**Hello friends, we will be deploying a React Js Zomato-clone. We will be using Jenkins as a CI/CD tool and deploying our application on a Docker container. I hope this detailed blog is useful.**
 
-**Git repo: https://github.com/Aj7Ay/Zomato-Clone.git**
+**Git repo:** [Zomato-Clone](https://github.com/Aj7Ay/Zomato-Clone.git)
 
-![](2.png)
+![Image](2.png)
 
-**Steps:-**
+## Steps:
 
-**Step 1 — Launch an Ubuntu(22.04) T2 Large Instance**
+1. **Launch an Ubuntu (22.04) T2 Large Instance**
+2. **Install Jenkins, Docker, and Trivy. Create a Sonarqube Container using Docker.**
+3. **Install Plugins like JDK, Sonarqube Scanner, Nodejs, and OWASP Dependency Check.**
+4. **Create a Pipeline Project in Jenkins using a Declarative Pipeline**
+5. **Install OWASP Dependency Check Plugins**
+6. **Docker Image Build and Push**
+7. **Deploy the image using Docker**
+8. **Terminate the AWS EC2 Instances**
 
-**Step 2 — Install Jenkins, Docker and Trivy. Create a Sonarqube Container using Docker.**
+Now, let’s get started and dig deeper into each of these steps.
 
-**Step 3 — Install Plugins like JDK, Sonarqube Scanner, Nodejs, and OWASP Dependency Check.**
+---
 
-**Step 4 — Create a Pipeline Project in Jenkins using a Declarative Pipeline**
+### **Step 1: Launch an Ubuntu (22.04) T2 Large Instance**
 
-**Step 5 — Install OWASP Dependency Check Plugins**
+Launch an AWS T2 Large Instance. Use the image as Ubuntu. You can create a new key pair or use an existing one. Enable HTTP and HTTPS settings in the Security Group and open all ports (not best case to open all ports but just for learning purposes it’s okay).
 
-**Step 6 — Docker Image Build and Push**
+![Image](3.png)
 
-**Step 7 — Deploy the image using Docker**
+---
 
-**Step 8 — Terminate the AWS EC2 Instances.**
+### **Step 2: Install Jenkins, Docker, and Trivy**
 
-**Now, let’s get started and dig deeper into each of these steps:-**
+#### **2A — Install Jenkins**
 
-` `**STEP1:Launch an Ubuntu(22.04) T2 Large Instance**
+Connect to your console, and enter these commands to install Jenkins:
 
-**Launch an AWS T2 Large Instance. Use the image as Ubuntu. You can create a new key pair or use an existing one. Enable HTTP and HTTPS settings in the Security Group and open all ports (not best case to open all ports but just for learning purposes it’s okay).**
+```bash
+vi jenkins.sh
+```
 
-![](3.png)
+Add the following script:
 
-**Step 2 — Install Jenkins, Docker and Trivy**
+```bash
+#!/bin/bash
+sudo apt update -y
+wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | tee /etc/apt/keyrings/adoptium.asc
+echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION\_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list
+sudo apt update -y
+sudo apt install temurin-17-jdk -y
+/usr/bin/java --version
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+sudo apt-get update -y
+sudo apt-get install jenkins -y
+sudo systemctl start jenkins
+sudo systemctl status jenkins
+sudo chmod 777 jenkins.sh
+./jenkins.sh
+```
 
-**2A — To Install Jenkins**
+Once Jenkins is installed, you will need to go to your AWS EC2 Security Group and open Inbound Port 8080, since Jenkins works on Port 8080.
 
-**Connect to your console, and enter these commands to Install Jenkins**
+Now, grab your Public IP Address:
 
-**vi jenkins.sh**
+```
+EC2 Public IP Address:8080
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
 
-**#!/bin/bash**
+![Image](4.png)
 
-**sudo apt update -y**
+Unlock Jenkins using an administrative password and install the suggested plugins.
 
-**#sudo apt upgrade -y**
+![Image](5.png)
 
-**wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | tee /etc/apt/keyrings/adoptium.asc**
+Jenkins will now get installed and install all the libraries.
 
-**echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION\_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list**
+![Image](6.png)
 
-**sudo apt update -y**
+Create a user, click on save and continue.
 
-**sudo apt install temurin-17-jdk -y**
+**Jenkins Getting Started Screen:**
 
-**/usr/bin/java --version**
+![Image](7.png)
 
-**curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee \**
+---
 
-`                  `**/usr/share/keyrings/jenkins-keyring.asc > /dev/null**
+#### **2B — Install Docker**
 
-**echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \**
+```bash
+sudo apt-get update
+sudo apt-get install docker.io -y
+sudo usermod -aG docker $USER
+newgrp docker
+sudo chmod 777 /var/run/docker.sock
+```
 
-`                  `**https://pkg.jenkins.io/debian-stable binary/ | sudo tee \**
+After the Docker installation, we create a Sonarqube container (Remember to add port 9000 in the security group).
 
-`                              `**/etc/apt/sources.list.d/jenkins.list > /dev/null**
+```bash
+docker run -d --name sonar -p 9000:9000 sonarqube:lts-community
+```
 
-**sudo apt-get update -y**
+![Image](8.png)
 
-**sudo apt-get install jenkins -y**
+Now, our Sonarqube is up and running.
 
-**sudo systemctl start jenkins**
+![Image](9.png)
 
-**sudo systemctl status jenkins**
+Enter username and password, click on login, and change the password.
 
-**sudo chmod 777 jenkins.sh**
+- **Username:** admin
+- **Password:** admin
 
-**./jenkins.sh**
+![Image](10.png)
 
-**Once Jenkins is installed, you will need to go to your AWS EC2 Security Group and open Inbound Port 8080, since Jenkins works on Port 8080.**
+Update the new password. This is the Sonar Dashboard.
 
-**Now, grab your Public IP Address**
+![Image](11.png)
 
-**EC2 Public IP Address:8080**
+---
 
-**sudo cat /var/lib/jenkins/secrets/initialAdminPassword**
+#### **2C — Install Trivy**
 
-![](4.png)
+```bash
+vi trivy.sh
+```
 
-**Unlock Jenkins using an administrative password and install the suggested plugins.**
+Add the following script:
 
-![](5.png)
+```bash
+sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb\_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get update
+sudo apt-get install trivy -y
+```
 
-**Jenkins will now get installed and install all the libraries.**
+Next, we will log in to Jenkins and start to configure our Pipeline in Jenkins.
 
-![](6.png)
+---
 
-**Create a user click on save and continue.**
+### **Step 3: Install Plugins like JDK, Sonarqube Scanner, NodeJs, OWASP Dependency Check**
 
-**Jenkins Getting Started Screen.**
+#### **3A — Install Plugin**
 
-![](7.png)
+Go to **Manage Jenkins → Plugins → Available Plugins →**
 
-**2B — Install Docker**
+Install the following plugins:
 
-**sudo apt-get update**
+1. **Eclipse Temurin Installer** (Install without restart)
+2. **SonarQube Scanner** (Install without restart)
+3. **NodeJs Plugin** (Install without restart)
 
-**sudo apt-get install docker.io -y**
+![Image](12.png)
+![Image](13.png)
 
-**sudo usermod -aG docker $USER**
+---
 
-**newgrp docker**
+#### **3B — Configure Java and Nodejs in Global Tool Configuration**
 
-**sudo chmod 777 /var/run/docker.sock**
+Go to **Manage Jenkins → Tools → Install JDK (17) and NodeJs (16) → Click on Apply and Save**
 
-**After the docker installation, we create a sonarqube container (Remember to add 9000 ports in the security group).**
+![Image](14.png)
+![Image](15.png)
 
-**docker run -d --name sonar -p 9000:9000 sonarqube:lts-community**
+---
 
-![](8.png)
+#### **3C — Create a Job**
 
-**Now our sonarqube is up and running**
+Create a job as **Zomato**, select **Pipeline**, and click on **OK**.
 
-![](9.png)
+---
 
-**Enter username and password, click on login and change password**
+### **Step 4: Configure Sonar Server in Manage Jenkins**
 
-**username admin**
+Grab the Public IP Address of your EC2 Instance. Sonarqube works on Port 9000, so `<Public IP>:9000`. Go to your Sonarqube Server. Click on **Administration → Security → Users → Click on Tokens and Update Token → Give it a name → and click on Generate Token**.
 
-**password admin**
+![Image](16.png)
 
-![](10.png)
+Click on **Update Token**.
 
-**Update New password, This is Sonar Dashboard.**
+![Image](17.png)
 
-![](11.png)
+Create a token with a name and generate.
 
-**2C — Install Trivy**
+![Image](18.png)
 
-**vi trivy.sh**
+Copy the token.
 
-**sudo apt-get install wget apt-transport-https gnupg lsb-release -y**
+Go to **Jenkins Dashboard → Manage Jenkins → Credentials → Add Secret Text**. It should look like this:
 
-**wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null**
+![Image](19.png)
 
-**echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb\_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list**
+You will see this page once you click on create.
 
-**sudo apt-get update**
+![Image](20.png)
 
-**sudo apt-get install trivy -y**
+Now, go to **Dashboard → Manage Jenkins → System** and add like the below image.
 
-**Next, we will log in to Jenkins and start to configure our Pipeline in Jenkins**
+![Image](21.png)
 
-**Step 3 — Install Plugins like JDK, Sonarqube Scanner, NodeJs, OWASP Dependency Check**
+Click on **Apply and Save**.
 
-**3A — Install Plugin**
+**The Configure System option** is used in Jenkins to configure different servers.
 
-**Goto Manage Jenkins →Plugins → Available Plugins →**
+**Global Tool Configuration** is used to configure different tools that we install using Plugins.
 
-**Install below plugins**
+We will install a Sonar Scanner in the tools.
 
-**1 → Eclipse Temurin Installer (Install without restart)**
+![Image](22.png)
 
-**2 → SonarQube Scanner (Install without restart)**
+In the Sonarqube Dashboard, add a quality gate also.
 
-**3 → NodeJs Plugin (Install Without restart)**
+**Administration → Configuration → Webhooks**
 
-![](12.png)![](13.png)
+![Image](23.png)
 
-**3B — Configure Java and Nodejs in Global Tool Configuration**
+Click on **Create**.
 
-**Goto Manage Jenkins → Tools → Install JDK(17) and NodeJs(16)→ Click on Apply and Save**
+![Image](24.png)
 
-![](14.png)![](15.png)
+Add details.
 
-**3C — Create a Job**
+```bash
+# In URL section of quality gate
+http://jenkins-public-ip:8080/sonarqube-webhook/
+```
 
-**create a job as Zomato Name, select pipeline and click on ok.**
+![Image](25.png)
 
-**Step 4 — Configure Sonar Server in Manage Jenkins**
+Let’s go to our Pipeline and add the script in our Pipeline Script.
 
-**Grab the Public IP Address of your EC2 Instance, Sonarqube works on Port 9000, so <Public IP>:9000. Goto your Sonarqube Server. Click on Administration → Security → Users → Click on Tokens and Update Token → Give it a name → and click on Generate Token**
+```groovy
+pipeline{
+    agent any
+    tools{
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    environment {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+    stages {
+        stage('clean workspace'){
+            steps{
+                cleanWs()
+            }
+        }
+        stage('Checkout from Git'){
+            steps{
+                git branch: 'main', url: 'https://github.com/Aj7Ay/Zomato-Clone.git'
+            }
+        }
+        stage("Sonarqube Analysis "){
+            steps{
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=zomato \
+                    -Dsonar.projectKey=zomato '''
+                }
+            }
+        }
+        stage("quality gate"){
+           steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                }
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+    }
+}
+```
 
-![](16.png)
+Click on **Build now**, you will see the stage view like this:
 
-**click on update Token**
+![Image](26.png)
 
-![](17.png)
+To see the report, you can go to the Sonarqube Server and go to **Projects**.
 
-**Create a token with a name and generate**
+![Image](27.png)
 
-![](18.png)
+You can see the report has been generated and the status shows as passed. You can see that there are 1.3k lines. To see a detailed report, you can go to **Issues**.
 
-**copy Token**
+---
 
-**Goto Jenkins Dashboard → Manage Jenkins → Credentials → Add Secret Text. It should look like this**
+### **Step 5: Install OWASP Dependency Check Plugins**
 
-![](19.png)
+Go to **Dashboard → Manage Jenkins → Plugins → OWASP Dependency-Check**. Click on it and install it without restart.
 
-**You will this page once you click on create**
+![Image](28.png)
 
-![](20.png)
+First, we configured the Plugin, and next, we had to configure the Tool.
 
-**Now, go to Dashboard → Manage Jenkins → System and Add like the below image.**
+Go to **Dashboard → Manage Jenkins → Tools →**
 
-![](21.png)
+![Image](29.png)
 
-**Click on Apply and Save**
+Click on **Apply and Save** here.
 
-**The Configure System option is used in Jenkins to configure different server**
+Now, go to **Configure → Pipeline** and add this stage to your pipeline and build.
 
-**Global Tool Configuration is used to configure different tools that we install using Plugins**
+```groovy
+stage('OWASP FS SCAN') {
+    steps {
+        dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+        dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+    }
+}
+stage('TRIVY FS SCAN') {
+    steps {
+        sh "trivy fs . > trivyfs.txt"
+    }
+}
+```
 
-**We will install a sonar scanner in the tools.**
+The stage view would look like this:
 
-![](22.png)
+![Image](30.png)
 
-**In the Sonarqube Dashboard add a quality gate also**
+You will see that in status, a graph will also be generated and Vulnerabilities.
 
-**Administration–> Configuration–>Webhooks**
+![Image](31.png)
 
-![](23.png)
+---
 
-**Click on Create**
+### **Step 6: Docker Image Build and Push**
 
-![](24.png)
+We need to install the Docker tool in our system. Go to **Dashboard → Manage Plugins → Available plugins → Search for Docker** and install these plugins:
 
-**Add details**
+- Docker
+- Docker Commons
+- Docker Pipeline
+- Docker API
+- docker-build-step
 
-**#in url section of quality gate**
+and click on **Install without restart**.
 
-**http://jenkins-public-ip:8080/sonarqube-webhook/**
+![Image](32.png)
 
-![](25.png)
+Now, go to **Dashboard → Manage Jenkins → Tools →**
 
-**Let’s go to our Pipeline and add the script in our Pipeline Script.**
+![Image](33.png)
 
-**pipeline{**
+Add DockerHub Username and Password under **Global Credentials**.
 
-`    `**agent any**
+![Image](34.png)
 
-`    `**tools{**
+Add this stage to the Pipeline Script:
 
-`        `**jdk 'jdk17'**
+```groovy
+stage("Docker Build & Push"){
+    steps{
+        script{
+            withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
+                sh "docker build -t zomato ."
+                sh "docker tag zomato sevenajay/zomato:latest"
+                sh "docker push sevenajay/zomato:latest"
+            }
+        }
+    }
+}
+stage("TRIVY"){
+    steps{
+        sh "trivy image sevenajay/zomato:latest > trivy.txt"
+    }
+}
+```
 
-`        `**nodejs 'node16'**
+You will see the output below, with a dependency trend.
 
-`    `**}**
+![Image](35.png)
 
-`    `**environment {**
+When you log in to DockerHub, you will see a new image is created.
 
-`        `**SCANNER\_HOME=tool 'sonar-scanner'**
+Now, run the container to see if the app is coming up or not by adding the below stage:
 
-`    `**}**
+```groovy
+stage('Deploy to container'){
+    steps{
+        sh 'docker run -d --name zomato -p 3000:3000 sevenajay/zomato:latest'
+    }
+}
+```
 
-`    `**stages {**
+**Stage view:**
 
-`        `**stage('clean workspace'){**
-
-`            `**steps{**
-
-`                `**cleanWs()**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage('Checkout from Git'){**
-
-`            `**steps{**
-
-`                `**git branch: 'main', url: 'https://github.com/Aj7Ay/Zomato-Clone.git'**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage("Sonarqube Analysis "){**
-
-`            `**steps{**
-
-`                `**withSonarQubeEnv('sonar-server') {**
-
-`                    `**sh ''' $SCANNER\_HOME/bin/sonar-scanner -Dsonar.projectName=zomato \**
-
-`                    `**-Dsonar.projectKey=zomato '''**
-
-`                `**}**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage("quality gate"){**
-
-`           `**steps {**
-
-`                `**script {**
-
-`                    `**waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'**
-
-`                `**}**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage('Install Dependencies') {**
-
-`            `**steps {**
-
-`                `**sh "npm install"**
-
-`            `**}**
-
-`        `**}**
-
-`    `**}**
-
-**}**
-
-**Click on Build now, you will see the stage view like this**
-
-![](26.png)
-
-**To see the report, you can go to Sonarqube Server and go to Projects.**
-
-![](27.png)
-
-**You can see the report has been generated and the status shows as passed. You can see that there are 1.3k lines. To see a detailed report, you can go to issues.**
-
-` `**Step 5 — Install OWASP Dependency Check Plugins**
-
-**GotoDashboard → Manage Jenkins → Plugins → OWASP Dependency-Check. Click on it and install it without restart.**
-
-![](28.png)
-
-**First, we configured the Plugin and next, we had to configure the Tool**
-
-**Goto Dashboard → Manage Jenkins → Tools →**
-
-![](29.png)
-
-**Click on Apply and Save here.**
-
-**Now go configure → Pipeline and add this stage to your pipeline and build.**
-
-**stage('OWASP FS SCAN') {**
-
-`            `**steps {**
-
-`                `**dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'**
-
-`                `**dependencyCheckPublisher pattern: '\*\*/dependency-check-report.xml'**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage('TRIVY FS SCAN') {**
-
-`            `**steps {**
-
-`                `**sh "trivy fs . > trivyfs.txt"**
-
-`            `**}**
-
-`        `**}**
-
-**The stage view would look like this,**
-
-![](30.png)
-
-**You will see that in status, a graph will also be generated and Vulnerabilities.**
-
-![](31.png)
-
-**Step 6 — Docker Image Build and Push**
-
-**We need to install the Docker tool in our system, Goto Dashboard → Manage Plugins → Available plugins → Search for Docker and install these plugins**
-
-**Docker**
-
-**Docker Commons**
-
-**Docker Pipeline**
-
-**Docker API**
-
-**docker-build-step**
-
-**and click on install without restart**
-
-![](32.png)
-
-**Now, goto Dashboard → Manage Jenkins → Tools →**
-
-![](33.png)
-
-**Add DockerHub Username and Password under Global Credentials**
-
-![](34.png)
-
-**Add this stage to Pipeline Script**
-
-**stage("Docker Build & Push"){**
-
-`            `**steps{**
-
-`                `**script{**
-
-`                   `**withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){**
-
-`                       `**sh "docker build -t zomato ."**
-
-`                       `**sh "docker tag zomato sevenajay/zomato:latest "**
-
-`                       `**sh "docker push sevenajay/zomato:latest "**
-
-`                    `**}**
-
-`                `**}**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage("TRIVY"){**
-
-`            `**steps{**
-
-`                `**sh "trivy image sevenajay/zomato:latest > trivy.txt"**
-
-`            `**}**
-
-`        `**}**
-
-**You will see the output below, with a dependency trend.**
-
-![](35.png)
-
-**When you log in to Dockerhub, you will see a new image is created**
-
-**Now Run the container to see if the app coming up or not by adding the below stage**
-
-**stage('Deploy to container'){**
-
-`     `**steps{**
-
-`            `**sh 'docker run -d --name zomato -p 3000:3000 sevenajay/zomato:latest'**
-
-`          `**}**
-
-`      `**}**
-
-**stage view**
-
-![](Aspose.Words.38efca39-e160-4033-a87e-1e10a98109f8.036.png)
+![Image](36.png)
 
 **<Jenkins-public-ip:3000>**
 
-**You will get this output**
-
-![](Aspose.Words.38efca39-e160-4033-a87e-1e10a98109f8.037.png)
-
-**Step 8: Terminate instances.**
-
-**Complete Pipeline**
-
-**pipeline{**
-
-`    `**agent any**
-
-`    `**tools{**
-
-`        `**jdk 'jdk17'**
-
-`        `**nodejs 'node16'**
-
-`    `**}**
-
-`    `**environment {**
-
-`        `**SCANNER\_HOME=tool 'sonar-scanner'**
-
-`    `**}**
-
-`    `**stages {**
-
-`        `**stage('clean workspace'){**
-
-`            `**steps{**
-
-`                `**cleanWs()**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage('Checkout from Git'){**
-
-`            `**steps{**
-
-`                `**git branch: 'main', url: 'https://github.com/Aj7Ay/Zomato-Clone.git'**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage("Sonarqube Analysis "){**
-
-`            `**steps{**
-
-`                `**withSonarQubeEnv('sonar-server') {**
-
-`                    `**sh ''' $SCANNER\_HOME/bin/sonar-scanner -Dsonar.projectName=zomato \**
-
-`                    `**-Dsonar.projectKey=zomato '''**
-
-`                `**}**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage("quality gate"){**
-
-`           `**steps {**
-
-`                `**script {**
-
-`                    `**waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'** 
-
-`                `**}**
-
-`            `**}** 
-
-`        `**}**
-
-`        `**stage('Install Dependencies') {**
-
-`            `**steps {**
-
-`                `**sh "npm install"**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage('OWASP FS SCAN') {**
-
-`            `**steps {**
-
-`                `**dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'**
-
-`                `**dependencyCheckPublisher pattern: '\*\*/dependency-check-report.xml'**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage('TRIVY FS SCAN') {**
-
-`            `**steps {**
-
-`                `**sh "trivy fs . > trivyfs.txt"**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage("Docker Build & Push"){**
-
-`            `**steps{**
-
-`                `**script{**
-
-`                   `**withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){**   
-
-`                       `**sh "docker build -t zomato ."**
-
-`                       `**sh "docker tag zomato sevenajay/zomato:latest "**
-
-`                       `**sh "docker push sevenajay/zomato:latest "**
-
-`                    `**}**
-
-`                `**}**
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage("TRIVY"){**
-
-`            `**steps{**
-
-`                `**sh "trivy image sevenajay/zomato:latest > trivy.txt"** 
-
-`            `**}**
-
-`        `**}**
-
-`        `**stage('Deploy to container'){**
-
-`            `**steps{**
-
-`                `**sh 'docker run -d --name zomato -p 3000:3000 sevenajay/zomato:latest'**
-
-`            `**}**
-
-`        `**}**
-
-`    `**}**
-
-**}**
-
+You will get this output:
+
+![Image](37.png)
+
+---
+
+### **Step 8: Terminate Instances**
+
+---
+
+### **Complete Pipeline**
+
+```groovy
+pipeline{
+    agent any
+    tools{
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    environment {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+    stages {
+        stage('clean workspace'){
+            steps{
+                cleanWs()
+            }
+        }
+        stage('Checkout from Git'){
+            steps{
+                git branch: 'main', url: 'https://github.com/Aj7Ay/Zomato-Clone.git'
+            }
+        }
+        stage("Sonarqube Analysis "){
+            steps{
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=zomato \
+                    -Dsonar.projectKey=zomato '''
+                }
+            }
+        }
+        stage("quality gate"){
+           steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                }
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+        stage('OWASP FS SCAN') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        stage('TRIVY FS SCAN') {
+            steps {
+                sh "trivy fs . > trivyfs.txt"
+            }
+        }
+        stage("Docker Build & Push"){
+            steps{
+                script{
+                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
+                        sh "docker build -t zomato ."
+                        sh "docker tag zomato sevenajay/zomato:latest"
+                        sh "docker push sevenajay/zomato:latest"
+                    }
+                }
+            }
+        }
+        stage("TRIVY"){
+            steps{
+                sh "trivy image sevenajay/zomato:latest > trivy.txt"
+            }
+        }
+        stage('Deploy to container'){
+            steps{
+                sh 'docker run -d --name zomato -p 3000:3000 sevenajay/zomato:latest'
+            }
+        }
+    }
+}
